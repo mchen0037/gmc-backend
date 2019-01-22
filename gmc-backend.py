@@ -10,25 +10,74 @@ import pandas
 from pandas import Series
 import rpy2.robjects as ro
 
+from rpy2.robjects.packages import importr # import R's "base" package
+base = importr('base')
+from rpy2.robjects import pandas2ri # install any dependency package if you get error like "module not found"
+pandas2ri.activate()
+
 root = "/home/mighty/gmc/gmc-backend"
+DBNAME = os.environ["GMC_DBNAME"]
+HOST = os.environ["GMC_HOST"]
+PORT = os.environ["GMC_PORT"]
+DBUSER = os.environ["GMC_USER"]
+PASSWORD = os.environ["GMC_PASSWORD"]
 
-def createModel(user):
-    print(user)
-    path = root + '/models/' + str(user) + '''.csv'''
-    r_query = "dat = read.csv(\'" + path + "\')"
-    dat = ro.r(r_query)
-    ro.r("""attach(dat)""")
-    # this comment is to commemorate the 1 hour you spent frekaing out at R because you literally
-    # passed the same in the good and bad data from your front end... holy..
+def createModel(user, data):
+    # print(user, data)
+    # convert the pandas dataframe into a R dataframe
+    dat = pandas2ri.py2ri(data)
+    ro.globalenv['dat'] = dat
 
-    model = ro.r("""
-    logModelA =
-    glm(class~danceability+energy+key+loudness+mode+speechiness+acousticness+instrumentalness+liveness+valence+tempo+duration_ms+time_signature,
-    data=dat,
-    family='binomial') """)
+    ro.globalenv['DBNAME'] = DBNAME
+    ro.globalenv['HOST'] = HOST
+    ro.globalenv['PORT'] = PORT
+    ro.globalenv['DBUSER'] = DBUSER
+    ro.globalenv['PASSWORD'] = PASSWORD
+    ro.globalenv['USER'] = user
+
 
     ro.r("""
-    save(logModelA, file = "models/""" + str(user) + """.rda")
+        print(dim(dat))
+    """)
+    # path = root + '/models/' + str(user) + '''.csv'''
+    # r_query = "dat = read.csv(\'" + path + "\')"
+    # ro.r(r_query)
+    ro.r("""
+        attach(dat)
+    """)
+    # this comment is to commemorate the 1 hour you spent frekaing out at R because you literally
+    # passed the same in the good and bad data from your front end... holy..
+    ro.r("""
+        logModelA =
+        glm(class~danceability+energy+key+loudness+mode+speechiness+acousticness+instrumentalness+liveness+valence+tempo+duration_ms+time_signature,
+        data=dat,
+        family='binomial')
+    """)
+    ro.r("""
+        require(RPostgreSQL)
+        drv <- dbDriver("PostgreSQL")
+        print(summary(logModelA))
+    """)
+
+    # Now store the model into a database.
+    ro.r("""
+        con <- dbConnect(drv, dbname=DBNAME,
+                    host=HOST,
+                    port=PORT,
+                    user=DBUSER,
+                    password=PASSWORD)
+
+        # serialize the model into bytes
+        x <- serialize(logModelA, NULL)
+
+        # save the raw vector as a character vector instead; paste it as a comma-separated string
+        x_conv <- as.character(x)
+        x_collapse = paste(x_conv, collapse=",")
+        x_collapse = paste("{", x_collapse,"}", sep="")
+
+
+        query = sprintf("INSERT INTO test_bytea VALUES ('%s','%s')", USER, x_collapse)
+        res <- dbSendQuery(con, statement=query);
     """)
 
 def prediction(user):
@@ -41,9 +90,10 @@ def prediction(user):
     ro.r("""new_dat = """ + test)
 
     ro.r("""logModel.probs = predict(logModelA, new_dat, type='response')""")
-    # print(ro.r("""logModel.probs"""))
+    print(ro.r("""logModel.probs"""))
     ro.r("""logModel.preds=rep('bad', dim(new_dat)[1])""")
-    ro.r("""logModel.preds[logModel.probs > 0.5]='good'""")
+    ro.r("""logModel.preds[logModel.probs > 0.25]='okay'""")
+    ro.r("""logModel.preds[logModel.probs > 0.75]='good'""")
     c = ro.r("""logModel.preds""")
 
     list = []
@@ -68,21 +118,23 @@ def train():
     df = pandas.DataFrame(eval(str(GOOD_AUDIO_FEATURES)))
     col = []
     for x in range(df.shape[0]):
-        col.append('good')
+        col.append(1)
     df['class'] = Series(col)
 
     df2 = pandas.DataFrame(eval(str(BAD_AUDIO_FEATURES)))
     col = []
     for x in range(df2.shape[0]):
-        col.append('bad')
+        col.append(0)
     df2['class'] = Series(col)
 
     frames = [df, df2]
     data = pandas.concat(frames, sort=False)
 
+    # Rather than saving a .csv file, how can we directly use the pandas data
+    # frame from python and send it to the R kernel to create the model?
     data.to_csv('models/' + str(USER) + '.csv')
 
-    createModel(USER)
+    createModel(USER, data)
 
     # do something with the audio features. i.e: Call RPy2 and train model.
     return jsonify({"result": True})
@@ -95,8 +147,8 @@ def models(user):
 
 @app.route("/delete/<string:user>", methods=['GET'])
 def delete(user):
-    os.remove(root + "/models/" + user + ".rda")
-    os.remove(root + "/models/" + user + ".csv")
+    # os.remove(root + "/models/" + user + ".rda")
+    # os.remove(root + "/models/" + user + ".csv")
     return jsonify({"result": True})
 
 @app.route("/all", methods=['GET'])
