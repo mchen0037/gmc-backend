@@ -9,6 +9,7 @@ from os import listdir
 import pandas
 from pandas import Series
 import rpy2.robjects as ro
+import psycopg2
 
 from rpy2.robjects.packages import importr # import R's "base" package
 base = importr('base')
@@ -178,8 +179,22 @@ def train():
 
 @app.route("/models/<string:user>", methods=['GET'])
 def models(user):
-    # print(root + "/models/" + user + ".rda")
-    fileExists = (os.path.isfile(root + "/models/" + user + ".rda"))
+    print("Checking for model for ", user, "...")
+
+    conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
+    cur = conn.cursor()
+
+    query = """ SELECT id FROM test_bytea WHERE id = %s"""
+    cur.execute(query, (user,))
+
+    res = cur.fetchone()
+    if res is None:
+        print("No model for ", user, " exists. Create a new model.")
+        fileExists = False
+    else:
+        print("A model exists for ", user, "! Welcome back!")
+        fileExists = True
+
     return jsonify({"result": fileExists})
 
 @app.route("/delete/<string:user>", methods=['GET'])
