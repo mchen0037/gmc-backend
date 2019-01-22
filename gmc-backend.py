@@ -195,12 +195,22 @@ def models(user):
         print("A model exists for ", user, "! Welcome back!")
         fileExists = True
 
+    cur.close()
+
     return jsonify({"result": fileExists})
 
 @app.route("/delete/<string:user>", methods=['GET'])
 def delete(user):
-    # os.remove(root + "/models/" + user + ".rda")
-    # os.remove(root + "/models/" + user + ".csv")
+    conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
+    cur = conn.cursor()
+
+    query = """DELETE FROM test_bytea WHERE id = %s"""
+    cur.execute(query, (user,))
+    print("Deleted ", cur.rowcount, " rows in the DB.")
+
+    conn.commit()
+    cur.close()
+
     return jsonify({"result": True})
 
 @app.route("/all", methods=['GET'])
