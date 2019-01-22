@@ -56,7 +56,6 @@ def createModel(user, data):
     ro.r("""
         require(RPostgreSQL)
         drv <- dbDriver("PostgreSQL")
-        print(summary(logModelA))
     """)
 
     # Now store the model into a database.
@@ -80,14 +79,52 @@ def createModel(user, data):
         res <- dbSendQuery(con, statement=query);
     """)
 
-def prediction(user):
-    # user = "nothing_faith"
-    file = """load('/home/mighty/gmc/gmc-backend/models/""" + user + """.rda')"""
-    test = """read.csv('/home/mighty/gmc/gmc-backend/models/test.csv')"""
+def prediction(user, data):
 
-    ro.r("""models = """ + file)
-    print(ro.r("""logModelA"""))
-    ro.r("""new_dat = """ + test)
+    dat = pandas2ri.py2ri(data)
+    ro.globalenv['new_dat'] = dat
+
+    ro.globalenv['DBNAME'] = DBNAME
+    ro.globalenv['HOST'] = HOST
+    ro.globalenv['PORT'] = PORT
+    ro.globalenv['DBUSER'] = DBUSER
+    ro.globalenv['PASSWORD'] = PASSWORD
+    ro.globalenv['USER'] = user
+
+    # Retrieve the model from the database
+    ro.r("""
+        require(RPostgreSQL)
+        drv <- dbDriver("PostgreSQL")
+    """)
+
+    ro.r("""
+        con <- dbConnect(drv, dbname=DBNAME,
+                    host=HOST,
+                    port=PORT,
+                    user=DBUSER,
+                    password=PASSWORD)
+
+        query = sprintf("SELECT * FROM test_bytea WHERE id='%s'", USER)
+
+        res <- dbSendQuery(con, statement=query);
+        z = dbFetch(res)
+
+        y = strsplit(z$model, ",")[[1]]
+        y[1] = substring(y[1], 2)
+        y[length(y)] = substring(y[length(y)], 1, nchar(y[length(y)]) - 1)
+
+        raw_model = as.raw(as.hexmode(y))
+        logModelA = unserialize(raw_model)
+
+    """)
+
+
+    # file = """load('/home/mighty/gmc/gmc-backend/models/""" + user + """.rda')"""
+    # test = """read.csv('/home/mighty/gmc/gmc-backend/models/test.csv')"""
+    #
+    # ro.r("""models = """ + file)
+    # print(ro.r("""logModelA"""))
+    # ro.r("""new_dat = """ + test)
 
     ro.r("""logModel.probs = predict(logModelA, new_dat, type='response')""")
     print(ro.r("""logModel.probs"""))
@@ -132,7 +169,7 @@ def train():
 
     # Rather than saving a .csv file, how can we directly use the pandas data
     # frame from python and send it to the R kernel to create the model?
-    data.to_csv('models/' + str(USER) + '.csv')
+    # data.to_csv('models/' + str(USER) + '.csv')
 
     createModel(USER, data)
 
@@ -159,7 +196,7 @@ def all():
 
 @app.route("/predict/<string:user>", methods=['POST'])
 def predict(user):
-    print(user)
+
     AUDIO_FEATURES = request.get_json()["test"]
 
     df = pandas.DataFrame(eval(str(AUDIO_FEATURES)))
@@ -168,9 +205,9 @@ def predict(user):
         col.append('bad')
     df['class'] = Series(col)
 
-    df.to_csv('models/test.csv')
+    # df.to_csv('models/test.csv')
 
-    res = prediction(user)
+    res = prediction(user, df)
     print(res)
 
     return jsonify({"results": res})
