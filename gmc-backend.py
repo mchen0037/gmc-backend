@@ -58,61 +58,42 @@ def createModel(user, data):
 
 def prediction(user, data):
 
-    dat = pandas2ri.py2ri(data)
-    ro.globalenv['new_dat'] = dat
 
-    ro.globalenv['DBNAME'] = DBNAME
-    ro.globalenv['HOST'] = HOST
-    ro.globalenv['PORT'] = PORT
-    ro.globalenv['DBUSER'] = DBUSER
-    ro.globalenv['PASSWORD'] = PASSWORD
-    ro.globalenv['USER'] = user
 
     # Retrieve the model from the database
-    ro.r("""
-        require(RPostgreSQL)
-        drv <- dbDriver("PostgreSQL")
-    """)
+    conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
+    cur = conn.cursor()
 
-    ro.r("""
-        con <- dbConnect(drv, dbname=DBNAME,
-                    host=HOST,
-                    port=PORT,
-                    user=DBUSER,
-                    password=PASSWORD)
+    query = """SELECT model FROM test_bytea WHERE id=%s"""
+    cur.execute(query, ('nothing_faith',))
+    b = cur.fetchone()
 
-        query = sprintf("SELECT * FROM test_bytea WHERE id='%s'", USER)
+    new_model = pickle.loads(codecs.decode(b[0].encode(), "base64"))
 
-        res <- dbSendQuery(con, statement=query);
-        z = dbFetch(res)
+    conn.commit()
+    cur.close()
 
-        y = strsplit(z$model, ",")[[1]]
-        y[1] = substring(y[1], 2)
-        y[length(y)] = substring(y[length(y)], 1, nchar(y[length(y)]) - 1)
+    y, X = dmatrices('qual ~ danceability + energy + key + loudness + mode + speechiness + acousticness + instrumentalness + liveness + valence + tempo + duration_ms + time_signature',
+                 data, return_type="dataframe")
 
-        raw_model = as.raw(as.hexmode(y))
-        logModelA = unserialize(raw_model)
+    preds = new_model.predict(X)
 
-    """)
+    # ro.r("""logModel.probs = predict(logModelA, new_dat, type='response')""")
+    # print(ro.r("""logModel.probs"""))
+    # ro.r("""logModel.preds=rep('bad', dim(new_dat)[1])""")
+    # ro.r("""logModel.preds[logModel.probs > 0.25]='okay'""")
+    # ro.r("""logModel.preds[logModel.probs > 0.75]='good'""")
+    # c = ro.r("""logModel.preds""")
 
-
-    # file = """load('/home/mighty/gmc/gmc-backend/models/""" + user + """.rda')"""
-    # test = """read.csv('/home/mighty/gmc/gmc-backend/models/test.csv')"""
-    #
-    # ro.r("""models = """ + file)
-    # print(ro.r("""logModelA"""))
-    # ro.r("""new_dat = """ + test)
-
-    ro.r("""logModel.probs = predict(logModelA, new_dat, type='response')""")
-    print(ro.r("""logModel.probs"""))
-    ro.r("""logModel.preds=rep('bad', dim(new_dat)[1])""")
-    ro.r("""logModel.preds[logModel.probs > 0.25]='okay'""")
-    ro.r("""logModel.preds[logModel.probs > 0.75]='good'""")
-    c = ro.r("""logModel.preds""")
+    # the sk-learn model is much different from the R version, figure out why
+    # later, but the software engineering aspect is more improtant right now.
 
     list = []
-    for x in c:
-        list.append(x)
+    for x in preds:
+        if x == 1:
+            list.append('good')
+        else:
+            list.append('bad')
 
     return list
 
