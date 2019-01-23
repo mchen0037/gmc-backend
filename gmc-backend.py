@@ -11,6 +11,15 @@ from pandas import Series
 import rpy2.robjects as ro
 import psycopg2
 
+import pickle
+import codecs
+
+from patsy import dmatrices
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+
+import pickle
+
 from rpy2.robjects.packages import importr # import R's "base" package
 base = importr('base')
 from rpy2.robjects import pandas2ri # install any dependency package if you get error like "module not found"
@@ -25,60 +34,27 @@ PASSWORD = os.environ["GMC_PASSWORD"]
 
 def createModel(user, data):
     # print(user, data)
-    # convert the pandas dataframe into a R dataframe
-    dat = pandas2ri.py2ri(data)
-    ro.globalenv['dat'] = dat
 
-    ro.globalenv['DBNAME'] = DBNAME
-    ro.globalenv['HOST'] = HOST
-    ro.globalenv['PORT'] = PORT
-    ro.globalenv['DBUSER'] = DBUSER
-    ro.globalenv['PASSWORD'] = PASSWORD
-    ro.globalenv['USER'] = user
+    print (data.columns)
 
+    y, X = dmatrices('qual~danceability+energy+key+loudness+mode+speechiness+acousticness+instrumentalness+liveness+valence+tempo+duration_ms+time_signature', data, return_type="dataframe")
 
-    ro.r("""
-        print(dim(dat))
-    """)
-    # path = root + '/models/' + str(user) + '''.csv'''
-    # r_query = "dat = read.csv(\'" + path + "\')"
-    # ro.r(r_query)
-    ro.r("""
-        attach(dat)
-    """)
-    # this comment is to commemorate the 1 hour you spent frekaing out at R because you literally
-    # passed the same in the good and bad data from your front end... holy..
-    ro.r("""
-        logModelA =
-        glm(class~danceability+energy+key+loudness+mode+speechiness+acousticness+instrumentalness+liveness+valence+tempo+duration_ms+time_signature,
-        data=dat,
-        family='binomial')
-    """)
-    ro.r("""
-        require(RPostgreSQL)
-        drv <- dbDriver("PostgreSQL")
-    """)
+    y = np.ravel(y)
 
-    # Now store the model into a database.
-    ro.r("""
-        con <- dbConnect(drv, dbname=DBNAME,
-                    host=HOST,
-                    port=PORT,
-                    user=DBUSER,
-                    password=PASSWORD)
+    model = LogisticRegression()
+    model.fit(X,y)
 
-        # serialize the model into bytes
-        x <- serialize(logModelA, NULL)
+    model_bytes = codecs.encode(pickle.dumps(model), "base64").decode()
 
-        # save the raw vector as a character vector instead; paste it as a comma-separated string
-        x_conv <- as.character(x)
-        x_collapse = paste(x_conv, collapse=",")
-        x_collapse = paste("{", x_collapse,"}", sep="")
+    conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
+    cur = conn.cursor()
 
+    query = """INSERT INTO test_bytea VALUES(%s, %s)"""
+    cur.execute(query, (user, model_bytes))
 
-        query = sprintf("INSERT INTO test_bytea VALUES ('%s','%s')", USER, x_collapse)
-        res <- dbSendQuery(con, statement=query);
-    """)
+    conn.commit()
+    cur.close()
+
 
 def prediction(user, data):
 
@@ -157,13 +133,13 @@ def train():
     col = []
     for x in range(df.shape[0]):
         col.append(1)
-    df['class'] = Series(col)
+    df['qual'] = Series(col)
 
-    df2 = pandas.DataFrame(eval(str(BAD_AUDIO_FEATURES)))
     col = []
+    df2 = pandas.DataFrame(eval(str(BAD_AUDIO_FEATURES)))
     for x in range(df2.shape[0]):
         col.append(0)
-    df2['class'] = Series(col)
+    df2['qual'] = Series(col)
 
     frames = [df, df2]
     data = pandas.concat(frames, sort=False)
@@ -228,7 +204,7 @@ def predict(user):
     col = []
     for x in range(df.shape[0]):
         col.append('bad')
-    df['class'] = Series(col)
+    df['qual'] = Series(col)
 
     # df.to_csv('models/test.csv')
 
