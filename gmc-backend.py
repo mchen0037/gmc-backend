@@ -2,13 +2,10 @@ from flask import Flask
 from flask_cors import CORS, cross_origin
 from flask import flash, redirect, render_template, request, session, abort, make_response
 from flask import jsonify
-from flask import request
-import subprocess
 import os
 from os import listdir
 import pandas
 from pandas import Series
-import rpy2.robjects as ro
 import psycopg2
 
 import pickle
@@ -19,11 +16,6 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 
 import pickle
-
-from rpy2.robjects.packages import importr # import R's "base" package
-base = importr('base')
-from rpy2.robjects import pandas2ri # install any dependency package if you get error like "module not found"
-pandas2ri.activate()
 
 root = "/home/mighty/gmc/gmc-backend"
 DBNAME = os.environ["GMC_DBNAME"]
@@ -77,13 +69,6 @@ def prediction(user, data):
                  data, return_type="dataframe")
 
     preds = new_model.predict(X)
-
-    # ro.r("""logModel.probs = predict(logModelA, new_dat, type='response')""")
-    # print(ro.r("""logModel.probs"""))
-    # ro.r("""logModel.preds=rep('bad', dim(new_dat)[1])""")
-    # ro.r("""logModel.preds[logModel.probs > 0.25]='okay'""")
-    # ro.r("""logModel.preds[logModel.probs > 0.75]='good'""")
-    # c = ro.r("""logModel.preds""")
 
     # the sk-learn model is much different from the R version, figure out why
     # later, but the software engineering aspect is more improtant right now.
