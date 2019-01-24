@@ -24,6 +24,12 @@ PORT = os.environ["GMC_PORT"]
 DBUSER = os.environ["GMC_USER"]
 PASSWORD = os.environ["GMC_PASSWORD"]
 
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'XYZ')
+
+CORS(app)
+
+
 def createModel(user, data):
     # print(user, data)
 
@@ -81,12 +87,6 @@ def prediction(user, data):
             list.append('bad')
 
     return list
-
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'super secret'
-# //cross origin request -security stuff
-CORS(app)
 
 @app.route("/train", methods=['POST'])
 def train():
@@ -179,44 +179,6 @@ def predict(user):
 
     return jsonify({"results": res})
 
-
-# localhost:4000/getusername is the url
-# This route can recieve get requests or post requests
-# the function below handles the request.
-
-# http://localhost:4000/username?id=1 args is whatever is after the questionmark
-
-# http://localhost:4000/username/1
-# @app.route("/username", methods = ['POST'])
-# def getUser():
-#     # print(request.args.get('id'))
-#     userID = request.get_json()["userID"]
-#     print(request.get_json()["userID"])
-#
-#     # return jsonify({"username": "yoboimightychen", "id": request.args.get('id')});
-#     # jsonify({"username": "yoboimightychen", "id": id}
-#     return
-
-
-# @app.route("/login", methods = ['POST'])
-# def login():
-#     print(request.get_json()["userID"])
-#
-#     return "got stuff"
-#     # return jsonify(request.json)
-
-
-# @app.route("/createuser")
-# def createUser():
-#     # user = request.args.get('id')
-#     user_name = request.args.get('name')
-#
-#     # query = "INSERT INTO "
-#
-#     print(app.secret_key)
-#     return 'hey';
-
-
-if __name__ == "__main__":
-    app.secret_key = os.urandom(12)
-    app.run(debug=True,host='0.0.0.0', port=4000)
+@app.route('/')
+def index():
+    return ("hello world")
