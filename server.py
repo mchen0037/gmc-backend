@@ -15,8 +15,6 @@ from patsy import dmatrices
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-import pickle
-
 root = "/home/mighty/gmc/gmc-backend"
 DBNAME = os.environ["GMC_DBNAME"]
 HOST = os.environ["GMC_HOST"]
@@ -29,12 +27,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'XYZ')
 
 CORS(app)
 
-
 def createModel(user, data):
-    # print(user, data)
-
-    print (data.columns)
-
     y, X = dmatrices('qual~danceability+energy+key+loudness+mode+speechiness+acousticness+instrumentalness+liveness+valence+tempo+duration_ms+time_signature', data, return_type="dataframe")
 
     y = np.ravel(y)
@@ -47,7 +40,7 @@ def createModel(user, data):
     conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
     cur = conn.cursor()
 
-    query = """INSERT INTO test_bytea VALUES(%s, %s)"""
+    query = """INSERT INTO gmc VALUES(%s, %s)"""
     cur.execute(query, (user, model_bytes))
 
     conn.commit()
@@ -55,14 +48,11 @@ def createModel(user, data):
 
 
 def prediction(user, data):
-
-
-
     # Retrieve the model from the database
     conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
     cur = conn.cursor()
 
-    query = """SELECT model FROM test_bytea WHERE id=%s"""
+    query = """SELECT model FROM gmc WHERE id=%s"""
     cur.execute(query, ('nothing_faith',))
     b = cur.fetchone()
 
@@ -94,7 +84,6 @@ def train():
     GOOD_AUDIO_FEATURES = request.get_json()["good"]
     BAD_AUDIO_FEATURES = request.get_json()["bad"]
 
-    # this is so janky please fix this lol
     df = pandas.DataFrame(eval(str(GOOD_AUDIO_FEATURES)))
     col = []
     for x in range(df.shape[0]):
@@ -126,7 +115,7 @@ def models(user):
     conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
     cur = conn.cursor()
 
-    query = """ SELECT id FROM test_bytea WHERE id = %s"""
+    query = """ SELECT id FROM gmc WHERE id = %s"""
     cur.execute(query, (user,))
 
     res = cur.fetchone()
@@ -146,7 +135,7 @@ def delete(user):
     conn = psycopg2.connect(host=HOST ,database=DBNAME, user=DBUSER, password=PASSWORD)
     cur = conn.cursor()
 
-    query = """DELETE FROM test_bytea WHERE id = %s"""
+    query = """DELETE FROM gmc WHERE id = %s"""
     cur.execute(query, (user,))
     print("Deleted ", cur.rowcount, " rows in the DB.")
 
@@ -171,8 +160,6 @@ def predict(user):
     for x in range(df.shape[0]):
         col.append('bad')
     df['qual'] = Series(col)
-
-    # df.to_csv('models/test.csv')
 
     res = prediction(user, df)
     print(res)

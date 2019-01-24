@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS gmc;
+CREATE TABLE gmc (
+  id VARCHAR(50) PRIMARY KEY NOT NULL,
+  model text NOT NULL
+);
