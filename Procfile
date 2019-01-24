@@ -1,1 +1,1 @@
-web: gunicorn deploy:app
+web: gunicorn gmc-backend.wsgi:application --log-file -
